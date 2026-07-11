@@ -114,6 +114,9 @@ function buildExtractTasksExpression() {
       return /万/.test(unitText) ? parsed * 10000 : parsed;
     };
     const looksLikeDate = (value) => Number.isFinite(value) && value >= 20000101 && value <= 20991231;
+    const headers = Array.from(document.querySelectorAll("th,[role='columnheader'],.arco-table-th,.semi-table-header-cell,.byted-table-header-cell"))
+      .map((node) => clean(node.innerText || node.textContent || ""))
+      .filter(Boolean);
     const spendBudgetOf = (items) => {
       for (const item of items) {
         const raw = String(item || "").replaceAll(",", "");
@@ -129,18 +132,25 @@ function buildExtractTasksExpression() {
       return {};
     };
     const taskCenterMetricsOf = (items) => {
+      const metricAt = (labels) => {
+        for (const label of labels) {
+          const index = headers.findIndex((header) => header.includes(label));
+          const value = index >= 0 ? num(items[index]) : null;
+          if (Number.isFinite(value)) return value;
+        }
+        return null;
+      };
       const statusIndex = items.findIndex((item) => /(调控中|调控结束|已暂停|已结束|进行中|审核|暂停)/.test(item));
       const createdIndex = items.findIndex((item) => /20\\d{2}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}/.test(item));
-      const budget = statusIndex >= 0 ? num(items[statusIndex + 1]) : null;
+      const budget = metricAt(["调控预算"]) ?? (statusIndex >= 0 ? num(items[statusIndex + 1]) : null);
       const tail = createdIndex >= 0
         ? items.slice(createdIndex + 1).map(num).filter((value) => Number.isFinite(value) && !looksLikeDate(value))
         : [];
       return {
         budget: Number.isFinite(budget) && !looksLikeDate(budget) ? budget : null,
-        orderCost: tail[0] ?? null,
-        dealAmount: tail[1] ?? null,
-        roi: tail[2] ?? null,
-        spend: tail.length ? tail[tail.length - 1] : null,
+        dealAmount: metricAt(["调控成交金额"]) ?? tail[1] ?? null,
+        roi: metricAt(["调控支付ROI", "支付ROI目标", "综合ROI目标"]) ?? tail[2] ?? null,
+        spend: metricAt(["调控消耗"]) ?? tail[0] ?? null,
       };
     };
     const taskTypeOf = (text) => {
@@ -369,6 +379,9 @@ function buildFindTaskExpression(taskId, step) {
       return Number.isFinite(parsed) ? parsed : null;
     };
     const looksLikeDate = (value) => Number.isFinite(value) && value >= 20000101 && value <= 20991231;
+    const headers = Array.from(document.querySelectorAll("th,[role='columnheader'],.arco-table-th,.semi-table-header-cell,.byted-table-header-cell"))
+      .map((node) => clean(node.innerText || node.textContent || ""))
+      .filter(Boolean);
     const spendBudgetOf = (items) => {
       for (const item of items) {
         const raw = String(item || "").replaceAll(",", "");
@@ -384,18 +397,25 @@ function buildFindTaskExpression(taskId, step) {
       return {};
     };
     const taskCenterMetricsOf = (items) => {
+      const metricAt = (labels) => {
+        for (const label of labels) {
+          const index = headers.findIndex((header) => header.includes(label));
+          const value = index >= 0 ? num(items[index]) : null;
+          if (Number.isFinite(value)) return value;
+        }
+        return null;
+      };
       const statusIndex = items.findIndex((item) => /(调控中|调控结束|已暂停|已结束|进行中|审核|暂停|开启)/.test(item));
       const createdIndex = items.findIndex((item) => /20\\d{2}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}/.test(item));
-      const budget = statusIndex >= 0 ? num(items[statusIndex + 1]) : null;
+      const budget = metricAt(["调控预算"]) ?? (statusIndex >= 0 ? num(items[statusIndex + 1]) : null);
       const tail = createdIndex >= 0
         ? items.slice(createdIndex + 1).map(num).filter((value) => Number.isFinite(value) && !looksLikeDate(value))
         : [];
       return {
         budget: Number.isFinite(budget) && !looksLikeDate(budget) ? budget : null,
-        orderCost: tail[0] ?? null,
-        dealAmount: tail[1] ?? null,
-        roi: tail[2] ?? null,
-        spend: tail.length ? tail[tail.length - 1] : null,
+        dealAmount: metricAt(["调控成交金额"]) ?? tail[1] ?? null,
+        roi: metricAt(["调控支付ROI", "支付ROI目标", "综合ROI目标"]) ?? tail[2] ?? null,
+        spend: metricAt(["调控消耗"]) ?? tail[0] ?? null,
       };
     };
     const taskId = ${JSON.stringify(String(taskId || ""))};
