@@ -162,6 +162,19 @@ function isFirstHourProtection(config = {}) {
   return totalMinutes >= open && totalMinutes < open + 60;
 }
 
+function isClosingProtection(config = {}, date = new Date()) {
+  const close = minutesOfDay(config.closeTime || config.investmentSop?.closeTime || "02:00");
+  const [hour = 0, minute = 0] = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date).split(":").map(Number);
+  const totalMinutes = hour * 60 + minute;
+  const minutesUntilClose = (close - totalMinutes + 24 * 60) % (24 * 60);
+  return minutesUntilClose > 0 && minutesUntilClose <= 60;
+}
+
 const DEFAULT_INVESTMENT_SOP = {
   category: typeof PROJECT_SOP.category === "string" ? PROJECT_SOP.category.trim() : "",
   targetRoi: Number.isFinite(Number(PROJECT_SOP.targetRoi)) ? Number(PROJECT_SOP.targetRoi) : null,
@@ -522,6 +535,7 @@ function ensureDataFiles() {
   }
   state.config = migrateConfig(state.config);
   cancelObsoleteAiBoostPauseActions(state);
+  cancelObsoleteAutomaticActions(state);
   if (state.taskCollectStatus?.running) {
     state.taskCollectStatus = {
       ...(state.taskCollectStatus || {}),
@@ -2713,6 +2727,51 @@ function applyBoostPauseGuard(state = {}, result = {}) {
   return result;
 }
 
+function lowerRoiGuardReason(state = {}, action = {}) {
+  if (String(action.type || "") !== "lower_roi_target") return "";
+  const currentTarget = num(state.config?.targetRoi);
+  const proposedTarget = num(action.params?.targetRoi ?? action.params?.value ?? action.targetRoi);
+  if (!Number.isFinite(currentTarget) || currentTarget <= 6) return "当前千川目标 ROI 已到 6.0 安全下限，禁止继续下调。";
+  if (Number.isFinite(proposedTarget) && proposedTarget < 6) return "建议目标 ROI 低于 6.0 安全下限，已拦截。";
+  return "";
+}
+
+function applyAutomaticActionGuards(state = {}, result = {}, now = Date.now()) {
+  if (result?.decision !== "act" || !Array.isArray(result.actions)) return result;
+  const closingProtection = isClosingProtection(state.config, new Date(now));
+  const blocked = [];
+  const actions = result.actions.filter((action) => {
+    const reason = closingProtection
+      ? "临近下播（收播前 60 分钟），当前只观察，不生成调控动作。"
+      : lowerRoiGuardReason(state, action);
+    if (!reason) return true;
+    blocked.push({ type: action.type, reason });
+    return false;
+  });
+  if (!blocked.length) return result;
+  result.actions = actions;
+  result.automaticActionGuard = blocked;
+  if (!actions.length) result.decision = "observe";
+  return result;
+}
+
+function cancelObsoleteAutomaticActions(state = {}, now = Date.now()) {
+  let cancelled = 0;
+  const closingProtection = isClosingProtection(state.config, new Date(now));
+  (state.actions || []).forEach((action) => {
+    if (!["ai", "rule"].includes(action.source) || !["pending_review", "ready_to_execute", "approved"].includes(action.status)) return;
+    const reason = closingProtection
+      ? "临近下播（收播前 60 分钟），自动调控动作已撤销，改为观察。"
+      : lowerRoiGuardReason(state, action);
+    if (!reason) return;
+    action.status = "cancelled";
+    action.cancelledAt = now;
+    action.cancelReason = `已按自动调控护栏撤销：${reason}`;
+    cancelled += 1;
+  });
+  return cancelled;
+}
+
 function cancelObsoleteAiBoostPauseActions(state = {}, now = Date.now()) {
   let cancelled = 0;
   (state.actions || []).forEach((action) => {
@@ -2763,6 +2822,12 @@ function runRules(state, snapshots) {
   }
   rulesEvaluated.push(ruleLog("live_window", true, "直播时段内"));
 
+  if (isClosingProtection(config, new Date(now))) {
+    rulesEvaluated.push(ruleLog("closing_protection", false, "临近下播，收播前60分钟只观察，不生成自动调控动作"));
+    return { fiveMinSpend, created, rulesEvaluated };
+  }
+  rulesEvaluated.push(ruleLog("closing_protection", true, "不在收播观察期"));
+
   const drifted = Math.abs(config.targetRoi - config.baselineTargetRoi) > 1;
   if (drifted) {
     const action = pushAction(state, "roi_drift_alert", "ROI 目标漂移告警", {}, `当前目标 ${config.targetRoi} 相比基准 ${config.baselineTargetRoi} 偏离超过 1.0`, now, "rule");
@@ -2783,10 +2848,11 @@ function runRules(state, snapshots) {
     }
   }
 
-  const shouldLower = canAdjustRoi && Number.isFinite(fiveMinSpend) && fiveMinSpend < config.lowFiveMinSpend && metrics.overallRoi >= config.targetRoi;
-  rulesEvaluated.push(ruleLog("lower_roi_target", shouldLower, shouldLower ? "低消耗且 ROI 达标" : "未满足低消耗达标 ROI"));
+  const lowerRoiFloor = 6;
+  const shouldLower = canAdjustRoi && config.targetRoi > lowerRoiFloor && Number.isFinite(fiveMinSpend) && fiveMinSpend < config.lowFiveMinSpend && metrics.overallRoi >= config.targetRoi;
+  rulesEvaluated.push(ruleLog("lower_roi_target", shouldLower, shouldLower ? "低消耗且 ROI 达标" : config.targetRoi <= lowerRoiFloor ? "目标 ROI 已到 6.0 安全下限" : "未满足低消耗达标 ROI"));
   if (shouldLower) {
-    const next = Math.max(config.minRoiTarget, money(config.targetRoi - 0.05));
+    const next = Math.max(lowerRoiFloor, money(config.targetRoi - 0.05));
     const action = pushAction(state, "lower_roi_target", "降低 ROI 目标放量", { previousTargetRoi: config.targetRoi, targetRoi: next }, `最近5分钟消耗${fiveMinSpend}元，综合ROI ${metrics.overallRoi} 达标但跑量偏慢`, now, "rule");
     if (action) {
       created.push(action);
@@ -2824,15 +2890,19 @@ async function runAiDecision(state, receivedAt) {
   const quadrant = detectQuadrant(state);
   const shiftProtection = isShiftProtection(state.config);
   const firstHourProtection = isFirstHourProtection(state.config);
+  const closingProtection = isClosingProtection(state.config, new Date(receivedAt));
   userPayload.quadrant = quadrant;
   userPayload.shiftProtection = shiftProtection;
   userPayload.firstHourProtection = firstHourProtection;
+  userPayload.closingProtection = closingProtection;
   const enrichedSystemPrompt = `${buildSystemPrompt()}\n\n--- 以下是完整投放 SOP 规则 ---\n\n${INVESTMENT_RULES_CONTEXT}`;
   const payload = { config: state.config, systemPrompt: enrichedSystemPrompt, userPayload };
   let result = await deepseek.decide(payload);
   result = appendRoiLanguageCorrection(result, state);
   result = applyBoostPauseGuard(state, result);
+  result = applyAutomaticActionGuards(state, result, receivedAt);
   cancelObsoleteAiBoostPauseActions(state, receivedAt);
+  cancelObsoleteAutomaticActions(state, receivedAt);
   state.aiInProgress = false;
   state.lastAiCallAt = receivedAt;
   appendJsonl(AI_LOG_FILE, { ts: receivedAt, payload: userPayload, result });
@@ -2870,20 +2940,24 @@ async function triggerAiNow(options = {}) {
   updateHourlySegmentMetrics(state, receivedAt);
   sanitizeStaleMetricState(state, receivedAt);
   cancelObsoleteAiBoostPauseActions(state, receivedAt);
+  cancelObsoleteAutomaticActions(state, receivedAt);
   state.aiInProgress = true;
   writeJson(STATE_FILE, state);
   const userPayload = buildUserPayload(state);
   const quadrant = detectQuadrant(state);
   const shiftProtection = isShiftProtection(state.config);
   const firstHourProtection = isFirstHourProtection(state.config);
+  const closingProtection = isClosingProtection(state.config, new Date(receivedAt));
   userPayload.quadrant = quadrant;
   userPayload.shiftProtection = shiftProtection;
   userPayload.firstHourProtection = firstHourProtection;
+  userPayload.closingProtection = closingProtection;
   const enrichedSystemPrompt = `${buildSystemPrompt()}\n\n--- 以下是完整投放 SOP 规则 ---\n\n${INVESTMENT_RULES_CONTEXT}`;
   const payload = { config: state.config, systemPrompt: enrichedSystemPrompt, userPayload };
   let result = await deepseek.decide(payload);
   result = appendRoiLanguageCorrection(result, state);
   result = applyBoostPauseGuard(state, result);
+  result = applyAutomaticActionGuards(state, result, receivedAt);
   state.aiInProgress = false;
   state.lastAiCallAt = receivedAt;
   appendJsonl(AI_LOG_FILE, { ts: receivedAt, payload: userPayload, result });
