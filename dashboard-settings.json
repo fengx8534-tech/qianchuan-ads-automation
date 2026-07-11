@@ -1,0 +1,170 @@
+{
+  "config": {
+    "actionCooldownMs": 720000,
+    "actionExpiresMs": 1800000,
+    "actionMode": "review",
+    "aiAutoCollectEnabled": true,
+    "aiAutoCollectRefreshOnStuck": true,
+    "aiEnabled": true,
+    "aiMinIntervalMs": 300000,
+    "aiModel": "deepseek-v4-flash",
+    "autoCollectEnabled": true,
+    "autoReviewAfterOffAir": true,
+    "baselineTargetRoi": 6,
+    "closeTime": "02:00",
+    "dingtalk": {
+      "enabled": true,
+      "notifyActionResult": true,
+      "notifyAiSuggestion": true,
+      "notifyCollectorError": true,
+      "notifyHourlySummary": true,
+      "notifySystemAlert": true
+    },
+    "executorDryRun": false,
+    "highFiveMinSpend": 50,
+    "investmentSop": {
+      "autonomousBoostRules": "1. 主力素材（消耗 TOP 3）：素材 ROI ≥ 4.5 且转化率不低于平均值 → 单次 200-300元，时长 1 小时。\n2. 潜力素材（中腰部消耗、有增长空间）：素材 ROI ≥ 5.0 且消耗速度在上升 → 单次 100-300 元，时长 1 小时，观察 30 分钟。\n3. 高 ROI 素材：素材 ROI ≥ 6.0 且有稳定成交 → 单次 200-300元，时长 1小时。\n4. 高点击素材：CTR > 平均 × 1.3 但转化率中等 → 单次 100-200 元，时长 1小时。\n5. 高转化素材：CVR > 页面显示的高转化值 → 单次 200-300 元，时长 1小时。\n6. 追投效果好的：已有追投且追投 ROI ≥ 2.0 → 叠加 ≤ 200 元。\n7. 新素材（最近 48 小时内创建）：审核通过 + 有基础消耗 → 单次 100-200 元，时长 1 小时，冷启动验证。\n\n禁止追投：素材 ROI < 2.0；审核未通过；已衰退（连续 2 天消耗下降）；追投占比 ≥ 28% 时不新增任何追投。\n\n一键起量适用：在线人数突然下降补量；新计划/新素材冷启动；直播间画面可作为素材来源；触发条件为综合 ROI > 目标 × 0.8 且在线 > 20；单次预算 ≤ 基础消耗 × 20%、≤ 500 元、时长 ≤ 3 小时。",
+      "avgOrderValue": 329,
+      "boostRatioLimit": 30,
+      "category": "战凌裤",
+      "closeTime": "02:00",
+      "faq": [
+        {
+          "category": "消耗类",
+          "items": [
+            {
+              "a": "查出价/素材审核/预算/人群定向/是否限流。",
+              "q": "消耗跑不出去"
+            },
+            {
+              "a": "查手动加预算/换品换播/竞品抢量/系统调价。",
+              "q": "消耗突然暴涨"
+            },
+            {
+              "a": "查素材疲劳(>2天)/计划衰退/人群洗尽。",
+              "q": "消耗速度持续下降"
+            }
+          ]
+        },
+        {
+          "category": "ROI 类",
+          "items": [
+            {
+              "a": "查换主播 → 查换品换播 → 查追投跑飞 → 查在线。",
+              "q": "ROI 突然跳水"
+            },
+            {
+              "a": "查消耗趋势/成交趋势/追投占比 → 分别处理。",
+              "q": "ROI 持续低于目标超30分钟"
+            },
+            {
+              "a": "偶然大单 → 不追投 → 等消耗稳定再判断。",
+              "q": "ROI 虚高但消耗不涨"
+            }
+          ]
+        },
+        {
+          "category": "追投类",
+          "items": [
+            {
+              "a": "停 ROI 最低追投 → 不新建 → 等回落到25%。",
+              "q": "追投占比超30%"
+            },
+            {
+              "a": "消耗达到预算80%且零成交 → 暂停；低消耗暂时观察。",
+              "q": "追投消耗多但零成交"
+            },
+            {
+              "a": "追投占比<28%才加(≤200) → 否则只延时不追加。",
+              "q": "一键起量ROI很高跑到上限"
+            },
+            {
+              "a": "优先关闭追投消耗高但ROI低的任务，新追投或者正在追投的调控任务处于低消耗的话暂时观察，尽量保留",
+              "q": "单小时ROI低至2-3"
+            }
+          ]
+        },
+        {
+          "category": "直播节奏类",
+          "items": [
+            {
+              "a": "正常 → 不操作 → 等15分钟后看。",
+              "q": "换播后15分钟内数据乱"
+            },
+            {
+              "a": "不操作 → 等模型稳定 → 看第2-3小时。",
+              "q": "开播首小时数据差"
+            },
+            {
+              "a": "查系统抢量 → 手动收紧 → 防浪费。",
+              "q": "快下播时消耗加速"
+            }
+          ]
+        },
+        {
+          "category": "素材/计划类",
+          "items": [
+            {
+              "a": "查原因 → 替换 → 等新素材起量。",
+              "q": "素材审核不过"
+            },
+            {
+              "a": "衰退期 → 新建计划 → 不追加原计划。",
+              "q": "计划跑两天突然没量"
+            },
+            {
+              "a": "查定向重叠 → 错开或暂停重复。",
+              "q": "多任务抢同一人群内耗"
+            }
+          ]
+        },
+        {
+          "category": "异常/平台类",
+          "items": [
+            {
+              "a": "先看大屏 → 超10分钟才报警。",
+              "q": "千川后台数据延迟"
+            },
+            {
+              "a": "查日预算 → 保高ROI任务 → 停低效追投。",
+              "q": "账户余额不足"
+            },
+            {
+              "a": "关自动出价 → 改手动。",
+              "q": "系统自动调价出价飞涨"
+            }
+          ]
+        }
+      ],
+      "grossMargin": 54,
+      "increaseCondition": "ROI > 目标 × 120% 且 追投占比 < 25%",
+      "lowerRoiCondition": "消耗过快且 ROI 持续低于目标超过 30 分钟",
+      "maxBudgetIncrease": 200,
+      "openTime": "06:00",
+      "pauseCondition": "素材追投：消耗 ≥ 预算 × 80% 且 未成交；低消耗任务暂时观察",
+      "returnRate": 46,
+      "roiStep": 0.2,
+      "scenarioRules": "开播首小时：不操作，纯观察。\n换播前后。15分钟内先观察不进行过多加量动作\n正常时段（ROI ≥ 目标）：允许小额加量。\n追投占比 > 30%：不新建追投；仅暂停消耗达到预算80%且未成交的低效追投，其余观察。",
+      "shiftTimes": [
+        "10:00",
+        "14:00",
+        "18:00",
+        "22:00"
+      ],
+      "targetRoi": 6
+    },
+    "lowFiveMinSpend": 20,
+    "materialCollectIntervalMs": 1800000,
+    "maxActionsPerHour": 3,
+    "maxBudgetIncrease": 200,
+    "maxRoiTarget": 9,
+    "minRoiTarget": 4.5,
+    "offAirConfirmationsRequired": 2,
+    "offAirLookbackMs": 720000,
+    "openTime": "06:00",
+    "targetRoi": 6,
+    "visualCollectStaleMs": 900000
+  },
+  "managedBy": "qianchuan-dashboard",
+  "schemaVersion": 1
+}
