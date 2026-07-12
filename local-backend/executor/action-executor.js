@@ -306,7 +306,7 @@ function buildFollowupExpression(action, openedAt) {
   const budget = Number(payload.budget || payload.newBudget || payload.budgetIncrease);
   const durationHours = Number(payload.durationHours || payload.newDurationHours || payload.extendHours);
   const kind = actionKind(action.type);
-  return `(() => {
+  return `(async () => {
     const targetRoi = Number(${JSON.stringify(action.payload || {})}.targetRoi ?? ${JSON.stringify(action.payload || {})}.roi);
     const action = ${JSON.stringify({ kind, budget, durationHours, openedAt })};
     action.targetRoi = targetRoi;
@@ -881,6 +881,7 @@ async function executeAction(action, options = {}) {
         const follow = await client.send("Runtime.evaluate", {
           expression: buildFollowupExpression(action, openedAt),
           returnByValue: true,
+          awaitPromise: true,
         });
         followValue = valueOrError(follow, "followup_evaluation_failed");
         if (followValue.warning === "confirm_dialog_not_visible") {
@@ -888,6 +889,7 @@ async function executeAction(action, options = {}) {
           const retry = await client.send("Runtime.evaluate", {
             expression: buildFollowupExpression(action, openedAt),
             returnByValue: true,
+            awaitPromise: true,
           });
           followValue = valueOrError(retry, "followup_evaluation_failed");
         }
@@ -936,4 +938,4 @@ async function executeAction(action, options = {}) {
   return { ok: false, error: "action_target_not_found_or_not_clickable", attempts };
 }
 
-module.exports = { executeAction, previewTask, isVerifiedPauseResult };
+module.exports = { executeAction, previewTask, isVerifiedPauseResult, buildFollowupExpression };
