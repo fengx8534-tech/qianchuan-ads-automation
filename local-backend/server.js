@@ -3017,6 +3017,7 @@ function normalizeChatAction(action = {}, state = {}, now = Date.now(), index = 
   const taskName = String(action.taskName || action.params?.taskName || "").trim();
   const matchedTask = (state.metrics?.tasks || []).find((task) => String(task.taskId || task.id || "") === taskId || (taskName && String(task.name || "").includes(taskName))) || {};
   const taskActionTypes = new Set(["pause_task", "end_task", "increase_task_budget", "decrease_task_budget", "extend_task_duration", "change_roi_target", "adjust_task_budget_duration"]);
+  const createActionTypes = new Set(["create_boost_task", "create_oneclick_task"]);
   const matchedTaskId = String(matchedTask.taskId || matchedTask.id || "").trim();
   if (taskActionTypes.has(type) && (!matchedTaskId || (taskId && String(taskId) !== matchedTaskId))) {
     const reason = taskId
@@ -3036,6 +3037,62 @@ function normalizeChatAction(action = {}, state = {}, now = Date.now(), index = 
       status: "invalid",
       createdAt: now,
       expiresAt: now,
+    };
+  }
+  if (createActionTypes.has(type)) {
+    const materialId = String(action.materialId || action.params?.materialId || "").trim();
+    const boostRatio = currentBoostRatioValue(state);
+    if (type === "create_boost_task" && !materialId) {
+      return null;
+    }
+    if (Number.isFinite(boostRatio) && boostRatio >= 28) {
+      return {
+        id: `${now}-ai-chat-${index}-${type}-invalid`,
+        type,
+        title: "AI 对话建议不满足新建条件",
+        payload: {
+          materialId: materialId || undefined,
+          validationError: "boost_ratio_guard",
+        },
+        reason: "追投占比已达28%，禁止新建追投",
+        source: "ai_chat",
+        status: "invalid",
+        createdAt: now,
+        expiresAt: now,
+      };
+    }
+    const budget = num(action.budget ?? action.params?.budget);
+    const durationHours = num(action.durationHours ?? action.params?.durationHours);
+    const requestedTargetRoi = num(action.targetRoi ?? action.params?.targetRoi ?? state.config?.targetRoi);
+    const targetRoi = Number.isFinite(requestedTargetRoi) && requestedTargetRoi > 0 ? requestedTargetRoi : 6;
+    const payload = {
+      materialId: materialId || undefined,
+      budget: Number.isFinite(budget) && budget > 0 ? budget : 200,
+      durationHours: Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 1,
+      targetRoi,
+      materialScreenMethod: action.materialScreenMethod || action.materialSelectionMethod || action.params?.materialScreenMethod || action.params?.materialSelectionMethod || undefined,
+      reason: action.reason || undefined,
+      previewRequired: true,
+      requiresExecutor: true,
+    };
+    if (type === "create_oneclick_task") {
+      delete payload.materialId;
+      delete payload.targetRoi;
+      delete payload.materialScreenMethod;
+      payload.useLiveRoomImage = true;
+    }
+    return {
+      id: `${now}-ai-chat-${index}-${type}`,
+      type,
+      title: action.reason || (type === "create_boost_task" ? "AI 对话建议新建追投" : "AI 对话建议新建一键起量"),
+      payload,
+      reason: action.reason || "AI 对话分析建议",
+      source: "ai_chat",
+      // Existing UI only renders pending_review as confirmable. Approval keeps the
+      // established create-action flow: dryRun preview first, then a second real-click confirmation.
+      status: "pending_review",
+      createdAt: now,
+      expiresAt: now + (state.config?.actionExpiresMs || DEFAULT_CONFIG.actionExpiresMs),
     };
   }
   const pauseGuardReason = boostPauseGuardReason(state, {
@@ -3341,6 +3398,7 @@ async function handleAiChat(body = {}, modelOverride = "") {
       "2. 找低效任务和异常任务，解释为什么有风险。",
       "3. 按投放 SOP 给调控建议，并在需要时生成待执行动作。",
       "4. 记住你的偏好和最近对话，连续跟你一起看盘。",
+      "5. 根据你的指令创建追投任务或一键起量任务。",
       "",
       "涉及实时数据时，我只按当前采集到的 state 回答；没采到的数据我会明确说没采到，不会乱编。",
     ].join("\n");
