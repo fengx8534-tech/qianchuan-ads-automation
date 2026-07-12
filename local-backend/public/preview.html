@@ -486,49 +486,48 @@
     </dialog>
 
     <dialog id="createTaskModal" class="ai-dialog create-task-modal">
-      <div class="dialog-head"><p class="eyebrow">新建调控任务</p><button id="createTaskClose" type="button" title="关闭">×</button></div>
-      <section class="create-task-step" id="createTaskStepType">
-        <h3>第一步：任务类型</h3>
-        <div class="create-task-types">
-          <button type="button" data-create-type="materialBoost">素材放量追投</button>
-          <button type="button" data-create-type="materialCostControlPayRoi">控成本·支付ROI</button>
-          <button type="button" data-create-type="materialCostControlBid">控成本·直播出价</button>
-          <button type="button" data-create-type="oneClickLift">一键起量·直播间购买</button>
-          <button type="button" data-create-type="liveScreenBoost">画面追投·放量</button>
-          <button type="button" data-create-type="liveScreenCostControl">画面追投·控成本</button>
+      <div class="dialog-head"><p class="eyebrow">新建追投</p><button id="createTaskClose" type="button" title="关闭">×</button></div>
+      <form id="createTaskForm" class="create-task-form">
+        <div class="create-task-control">
+          <label>素材来源</label>
+          <div class="source-tabs" role="group" aria-label="素材来源">
+            <button id="createTaskSourceVideo" type="button" data-source="video" class="active">视频素材</button>
+            <button id="createTaskSourceLive" type="button" data-source="live">直播间画面</button>
+          </div>
         </div>
-      </section>
-      <section class="create-task-step" id="createTaskStepMaterial" hidden>
-        <h3>第二步：选择素材</h3>
-        <div class="create-task-filters">
-          <button type="button" data-material-screen="topSpend">主跑素材</button><button type="button" data-material-screen="comprehensiveRoi">综合ROI</button><button type="button" data-material-screen="highCtr">高点击</button><button type="button" data-material-screen="highCvr">高转化</button>
+        <div class="create-task-control" id="createTaskStrategySection">
+          <label>追投策略</label>
+          <div class="strategy-tabs" role="group" aria-label="追投策略">
+            <button id="strategyTopSpend" type="button" data-strategy="topSpend" class="active">主跑素材</button>
+            <button id="strategyRoi" type="button" data-strategy="comprehensiveRoi">综合ROI高</button>
+            <button id="strategyCvr" type="button" data-strategy="highCvr">转化率高</button>
+            <button id="strategyCtr" type="button" data-strategy="highCtr">点击率高</button>
+          </div>
+          <p class="create-task-strategy-hint">AI 将按策略自动筛选素材，无需手动选择</p>
         </div>
-        <div class="create-task-manual"><input id="createTaskManualIds" placeholder="手动输入素材ID，逗号分隔" /><button id="createTaskManualScreen" type="button">验证素材</button></div>
-        <p id="createTaskScreenStatus" class="manual-action-result"></p>
-        <div id="createTaskBatch" class="create-task-batch" hidden>
-          <span id="createTaskSelectionCount">已选 0 条</span>
-          <button id="createTaskSelectAll" type="button">全选本轮</button>
-          <button id="createTaskClearAll" type="button">取消全选</button>
-          <button id="createTaskUseSelected" type="button">使用已选素材</button>
+        <div class="create-task-control">
+          <label>追投模式</label>
+          <div class="mode-tabs" role="group" aria-label="追投模式">
+            <button id="createTaskModeBoost" type="button" data-mode="boost" class="active">放量追投</button>
+            <button id="createTaskModeCost" type="button" data-mode="cost_control">控成本追投</button>
+          </div>
         </div>
-        <div id="createTaskCandidates" class="create-task-candidates"></div>
-      </section>
-      <section class="create-task-step" id="createTaskStepParams" hidden>
-        <h3>第三步：调整参数</h3>
+        <div class="create-task-control" id="createTaskTargetSection" hidden>
+          <label>优化目标</label>
+          <div class="target-tabs" role="group" aria-label="优化目标">
+            <button id="createTaskTargetRoi" type="button" data-target="roi" class="active">综合ROI</button>
+            <button id="createTaskTargetBid" type="button" data-target="bid">直播间成交</button>
+          </div>
+        </div>
         <div class="task-action-fields create-task-fields">
-          <label>预算（元）<input id="createTaskBudget" type="number" min="1" value="200" /></label>
-          <label>时长（小时）<input id="createTaskDuration" type="number" min="0.5" step="0.5" value="1" /></label>
-          <label id="createTaskRoiField">ROI目标<input id="createTaskRoi" type="number" min="0.1" step="0.1" value="6" /></label>
-          <label id="createTaskPayRoiField" hidden>支付ROI<input id="createTaskPayRoi" type="number" min="0.1" step="0.1" value="6" /></label>
-          <label id="createTaskBidField" hidden>直播出价<input id="createTaskBid" type="number" min="0.1" step="0.1" value="52" /></label>
+          <label>预算（元）<input id="createTaskBudget" type="number" min="1" value="200" required /></label>
+          <label id="createTaskDurationField">时长（小时）<input id="createTaskDuration" type="number" min="0.5" step="0.5" value="1" required /></label>
+          <label id="createTaskRoiField" hidden>综合ROI目标<input id="createTaskRoi" type="number" min="0.1" step="0.1" value="6" /></label>
+          <label id="createTaskBidField" hidden>直播间成交出价<input id="createTaskBid" type="number" min="0.1" step="0.1" value="52" /></label>
         </div>
-        <p id="createTaskPreviewStatus" class="manual-action-result"></p>
-        <button id="createTaskPreview" type="button">预览</button>
-      </section>
-      <section class="create-task-step" id="createTaskStepPreview" hidden>
-        <h3>第四步：预览确认</h3><p id="createTaskPreviewSummary" class="manual-action-result"></p><img id="createTaskPreviewImage" class="create-task-preview-image" alt="千川表单预览" />
-        <div class="dialog-buttons"><button id="createTaskConfirm" type="button">确认执行</button><button id="createTaskBack" type="button">返回修改</button></div>
-      </section>
+        <p id="createTaskFormStatus" class="manual-action-result"></p>
+        <div class="dialog-buttons"><button id="createTaskSubmit" type="submit">确定</button><button id="createTaskCancel" type="button">取消</button></div>
+      </form>
     </dialog>
 
     <dialog id="engineeringAlertDialog" class="ai-dialog engineering-alert-dialog">
@@ -544,6 +543,6 @@
       </form>
     </dialog>
 
-    <script src="/assets/preview.js?v=boost-create-flow-3"></script>
+    <script src="/assets/preview.js?v=boost-create-flow-9-strategy"></script>
   </body>
 </html>

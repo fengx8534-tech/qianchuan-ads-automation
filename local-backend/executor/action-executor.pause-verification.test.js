@@ -43,9 +43,26 @@ const materialCreate = buildCreateTaskExpression({
   type: "create_boost_task",
   payload: { materialIds: ["123456789012345678"], budget: 200, durationHours: 1, boostType: "materialBoost", useLiveRoomImage: false },
 }, true);
-assert.match(materialCreate, /open_material_picker/, "素材追投预览必须先打开千川素材选择器");
-assert.match(materialCreate, /verify_materials_added/, "素材追投预览必须确认素材已带回创建表单");
+assert.match(materialCreate, /choose_video_material/, "素材追投预览必须先进入视频素材页");
+assert.match(materialCreate, /select_material/, "素材追投预览必须先勾选素材");
+assert.match(materialCreate, /open_material_boost_form/, "素材追投预览必须从顶部追投按钮进入表单");
 assert.doesNotThrow(() => new Function(`return ${materialCreate};`), "新建追投脚本必须可被浏览器解析");
+
+const liveScreenCostControl = buildCreateTaskExpression({
+  type: "create_boost_task",
+  payload: { budget: 200, durationHours: 1, boostType: "liveScreenCostControl", useLiveRoomImage: true },
+}, true);
+assert.match(liveScreenCostControl, /choose_live_room_image/, "画面追投必须先选择直播间画面");
+assert.match(liveScreenCostControl, /open_live_screen_boost_form/, "画面追投必须从画面行追投按钮进入表单");
+assert.match(liveScreenCostControl, /choose_cost_control/, "画面控成本必须显式选择控成本追投");
+assert.match(liveScreenCostControl, /fill_duration/, "画面控成本必须保留调控时长");
+assert.match(liveScreenCostControl, /boostType !== "liveScreenCostControl"/, "画面控成本不应选择ROI或出价优化目标");
+
+const oneClickPopularity = buildCreateTaskExpression({
+  type: "create_oneclick_task",
+  payload: { budget: 200, durationHours: 1, boostType: "oneClickLiftPopularity", useLiveRoomImage: true },
+}, true);
+assert.match(oneClickPopularity, /直播间人气/, "一键起量人气路线必须选择直播间人气");
 
 const pauseConfirmation = buildPauseConfirmationExpression({ type: "pause_task" });
 assert.match(pauseConfirmation, /confirmationStillOpen/, "暂停确认后必须检查弹窗是否仍然存在");

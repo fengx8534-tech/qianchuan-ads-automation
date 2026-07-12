@@ -27,7 +27,7 @@ const { runBoardCollector } = require("./executor/board-collector");
 const { runBoardTrendCollector } = require("./executor/board-trend-collector");
 const { runPlanCollector } = require("./executor/plan-collector");
 const { runMaterialCollector } = require("./executor/material-collector");
-const { screenMaterials } = require("./executor/material-screener");
+const { screenMaterials, resetMaterialScreener } = require("./executor/material-screener");
 const { chooseBaseSpendCandidate } = require("./lib/spend-metrics");
 const { summarizeEngineeringHealth } = require("./lib/health-monitor");
 const { buildLiveScreenUrl, buildTaskCenterUrl, findAdContextFromState, findLiveContextFromState, hasAdContext, taskCenterUrlFromSource } = require("./lib/qianchuan-url");
@@ -3849,7 +3849,7 @@ async function batchApproveAndMaybeExecute(ids) {
   return { ...approvedResult, executions };
 }
 
-function createManualActionCommand(body = {}) {
+async function createManualActionCommand(body = {}) {
   const state = readJson(STATE_FILE, {});
   const receivedAt = Date.now();
   state.config = migrateConfig(state.config);
@@ -3868,9 +3868,10 @@ function createManualActionCommand(body = {}) {
   const payRoi = Number(body.payRoi);
   const bidPrice = Number(body.bidPrice);
   const materialId = String(body.materialId || "").trim();
-  const materialIds = materialIdsFromPayload(body.materialIds, materialId);
+  let materialIds = materialIdsFromPayload(body.materialIds, materialId);
+  const materialStrategy = String(body.materialStrategy || "").trim();
   const boostType = String(body.boostType || body.type || "").trim();
-  const useLiveRoomImage = body.useLiveRoomImage !== false;
+  const useLiveRoomImage = body.useLiveRoomImage === true;
   const manualBoostOverride = body.manualBoostOverride === true;
   if (!command && !actionType) return { ok: false, error: "command_required" };
 
@@ -3880,6 +3881,14 @@ function createManualActionCommand(body = {}) {
   const type = hasDuration && hasBudget && ["increase_task_budget", "extend_task_duration"].includes(inferredType)
     ? "adjust_task_budget_duration"
     : inferredType;
+  if (type === "create_boost_task" && !useLiveRoomImage && !materialIds.length) {
+    if (!materialStrategy) return { ok: false, error: "material_strategy_required" };
+    const screened = await screenMaterialRecommendations({ type: materialStrategy });
+    if (!screened.ok) return { ok: false, error: screened.error || "material_strategy_screen_failed" };
+    if (screened.blocked) return { ok: false, error: "boost_ratio_guard", blocked: true, boostRatio: screened.boostRatio, message: screened.message };
+    materialIds = screened.recommendedMaterialIds || [];
+    if (!materialIds.length) return { ok: false, error: "material_strategy_no_candidate", materialStrategy };
+  }
   const payloadTaskId = taskId || taskIdFromPayload({ taskName, command }) || "";
   const task = (state.metrics?.tasks || []).find((item) => String(item.taskId || item.id || "") === String(payloadTaskId)
     || String(item.name || "").includes(payloadTaskId)
@@ -3910,6 +3919,7 @@ function createManualActionCommand(body = {}) {
     command,
     materialId: materialIds[0] || undefined,
     materialIds: materialIds.length ? materialIds : undefined,
+    materialStrategy: materialStrategy || undefined,
     boostType: boostType || undefined,
     budget: Number.isFinite(nextBudget) ? nextBudget : undefined,
     budgetIncrease: Number.isFinite(increaseAmount) ? increaseAmount : undefined,
@@ -4038,10 +4048,14 @@ async function screenMaterialRecommendations(body = {}) {
   const recommendations = new Map((ai.actions || [])
     .map((action) => [String(action.params?.materialId || ""), { ...action.params, reason: action.reason }])
     .filter(([materialId]) => materialId));
+  const recommendedMaterialIds = Array.from(recommendations.keys())
+    .filter((materialId) => source.some((item) => String(item.materialId || item["素材ID"] || "") === materialId))
+    .slice(0, 10);
   const candidates = source.map((item) => materialScreenCandidate(item, recommendations.get(String(item.materialId || item["素材ID"])) || {}, state));
   return {
     ok: true,
     candidates: candidates.length ? candidates : source.slice(0, 3).map((item) => materialScreenCandidate(item, {}, state)),
+    recommendedMaterialIds,
     boostRatio,
     blocked: false,
     manualBoostOverride,
@@ -5356,7 +5370,7 @@ function sendFile(res, filePath) {
   const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png" };
   fs.readFile(filePath, (error, content) => {
     if (error) return send(res, 404, { ok: false, error: "file not found" });
-    res.writeHead(200, { "content-type": types[ext] || "text/plain; charset=utf-8" });
+    res.writeHead(200, { "content-type": types[ext] || "text/plain; charset=utf-8", "cache-control": "no-cache, no-store, must-revalidate", "pragma": "no-cache", "expires": "0" });
     res.end(content);
   });
 }
@@ -5375,23 +5389,23 @@ async function route(req, res) {
   if (req.method === "OPTIONS") return send(res, 204, {});
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
 
-  if ((url.pathname === "/" || url.pathname === "/preview.html") && req.method === "GET") return sendFile(res, path.join(PUBLIC_DIR, "preview.html"));
-  if (url.pathname.startsWith("/assets/") && req.method === "GET") {
+  if ((url.pathname === "/" || url.pathname === "/preview.html") && (req.method === "GET" || req.method === "HEAD")) return sendFile(res, path.join(PUBLIC_DIR, "preview.html"));
+  if (url.pathname.startsWith("/assets/") && (req.method === "GET" || req.method === "HEAD")) {
     const filePath = path.join(PUBLIC_DIR, url.pathname.replace("/assets/", ""));
     if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, { ok: false, error: "forbidden" });
     return sendFile(res, filePath);
   }
-  if (url.pathname.startsWith("/visual/") && req.method === "GET") {
+  if (url.pathname.startsWith("/visual/") && (req.method === "GET" || req.method === "HEAD")) {
     const filePath = path.join(DATA_DIR, url.pathname);
     if (!filePath.startsWith(path.join(DATA_DIR, "visual"))) return send(res, 403, { ok: false, error: "forbidden" });
     return sendFile(res, filePath);
   }
-  if (url.pathname.startsWith("/execution/") && req.method === "GET") {
+  if (url.pathname.startsWith("/execution/") && (req.method === "GET" || req.method === "HEAD")) {
     const filePath = path.join(DATA_DIR, url.pathname);
     if (!filePath.startsWith(path.join(DATA_DIR, "execution"))) return send(res, 403, { ok: false, error: "forbidden" });
     return sendFile(res, filePath);
   }
-  if (url.pathname.startsWith("/reviews/") && req.method === "GET") {
+  if (url.pathname.startsWith("/reviews/") && (req.method === "GET" || req.method === "HEAD")) {
     const filePath = path.join(DATA_DIR, url.pathname);
     if (!filePath.startsWith(path.join(DATA_DIR, "reviews"))) return send(res, 403, { ok: false, error: "forbidden" });
     return sendFile(res, filePath);
@@ -5650,7 +5664,7 @@ async function route(req, res) {
   }
 
   if (url.pathname === "/api/action/command" && req.method === "POST") {
-    const result = createManualActionCommand(await readBody(req));
+    const result = await createManualActionCommand(await readBody(req));
     return send(res, result.ok ? 200 : 400, result);
   }
 
@@ -5659,17 +5673,31 @@ async function route(req, res) {
     return send(res, result.ok ? 200 : 400, result);
   }
 
+  if (url.pathname === "/api/material/screener/reset" && req.method === "POST") {
+    resetMaterialScreener();
+    return send(res, 200, { ok: true, message: "screener已重置" });
+  }
+
   if (url.pathname === "/api/task/preview" && req.method === "POST") {
     const body = await readBody(req);
+    const previewBody = { ...body };
     const state = readJson(STATE_FILE, {});
     state.config = migrateConfig(state.config);
-    const boostType = String(body.type || "");
+    const boostType = String(previewBody.type || "");
     const boostRatio = currentBoostRatioValue(state);
-    const manualBoostOverride = body.manualBoostOverride === true;
-    if (boostType !== "oneClickLift" && !manualBoostOverride && Number.isFinite(boostRatio) && boostRatio >= 28) {
+    const manualBoostOverride = previewBody.manualBoostOverride === true;
+    if (!boostType.startsWith("oneClickLift") && !manualBoostOverride && Number.isFinite(boostRatio) && boostRatio >= 28) {
       return send(res, 400, { ok: false, blocked: true, boostRatio, error: "boost_ratio_guard", message: "追投占比已达28%，禁止新建追投" });
     }
-    const result = await previewTask(body, {
+    const isLiveScreenPreview = previewBody.useLiveRoomImage === true || boostType.startsWith("liveScreen");
+    if (!isLiveScreenPreview && previewBody.materialStrategy && !materialIdsFromPayload(previewBody.materialIds, previewBody.materialId).length) {
+      const screened = await screenMaterialRecommendations({ type: previewBody.materialStrategy, manualBoostOverride });
+      if (!screened.ok) return send(res, 400, screened);
+      if (screened.blocked) return send(res, 400, { ...screened, error: "boost_ratio_guard" });
+      if (!(screened.recommendedMaterialIds || []).length) return send(res, 400, { ok: false, error: "material_strategy_no_candidate", materialStrategy: previewBody.materialStrategy });
+      previewBody.materialIds = screened.recommendedMaterialIds;
+    }
+    const result = await previewTask(previewBody, {
       dataDir: DATA_DIR,
       cdpUrl: state.config.cdpUrl,
       expectedAccountId: state.config.expectedAccountId,

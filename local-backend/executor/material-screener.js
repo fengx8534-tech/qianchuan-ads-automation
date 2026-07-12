@@ -2,6 +2,8 @@ const { runMaterialCollector } = require("./material-collector");
 
 let consecutiveFailures = 0;
 let paused = false;
+let pausedAt = 0;
+const PAUSE_RESET_MS = 5 * 60 * 1000;
 
 function numberOf(value) {
   const parsed = Number(String(value ?? "").replaceAll(",", "").replaceAll("%", ""));
@@ -17,7 +19,16 @@ function sortBy(items, field) {
 }
 
 async function screenMaterials(type, manualIds = [], options = {}) {
-  if (paused) return { ok: false, error: "material_screener_paused_after_3_failures", paused: true, materials: [] };
+  if (paused) {
+    if (Date.now() - pausedAt >= PAUSE_RESET_MS) {
+      paused = false;
+      consecutiveFailures = 0;
+      pausedAt = 0;
+    } else {
+      const retryInSeconds = Math.ceil((PAUSE_RESET_MS - (Date.now() - pausedAt)) / 1000);
+      return { ok: false, error: "material_screener_paused_after_3_failures", paused: true, retryInSeconds, materials: [] };
+    }
+  }
   const accepted = new Set(["topSpend", "comprehensiveRoi", "highCtr", "highCvr", "manual"]);
   if (!accepted.has(type)) return { ok: false, error: "invalid_screen_type", materials: [] };
 
@@ -30,7 +41,10 @@ async function screenMaterials(type, manualIds = [], options = {}) {
   });
   if (!result.ok) {
     consecutiveFailures += 1;
-    if (consecutiveFailures >= 3) paused = true;
+    if (consecutiveFailures >= 3) {
+      paused = true;
+      pausedAt = Date.now();
+    }
     return { ok: false, error: result.error || "material_screen_failed", paused, materials: [] };
   }
 
@@ -65,4 +79,10 @@ async function screenMaterials(type, manualIds = [], options = {}) {
   };
 }
 
-module.exports = { screenMaterials };
+function resetMaterialScreener() {
+  consecutiveFailures = 0;
+  paused = false;
+  pausedAt = 0;
+}
+
+module.exports = { screenMaterials, resetMaterialScreener };

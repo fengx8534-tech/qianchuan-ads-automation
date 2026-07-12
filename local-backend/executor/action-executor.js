@@ -614,53 +614,48 @@ function buildCreateTaskExpression(action, dryRun) {
       steps.push(tab);
       if (!tab.ok) return { ok: false, dryRun: action.dryRun, steps };
       await wait(800);
-      const create = await clickByText("button, [role=button], a", ["新建追投", "追投", "新建"], "click_create_boost");
-      steps.push(create);
-      if (!create.ok) return { ok: false, dryRun: action.dryRun, steps };
-      await wait(1000);
-      if (/materialCostControl/i.test(String(action.payload.boostType || ""))) {
-        const costControl = await clickByText("button, [role=tab], [role=button], label, a, div", ["控成本", "成本控制"], "choose_cost_control");
-        steps.push(costControl);
-        if (!costControl.ok) return { ok: false, dryRun: action.dryRun, steps };
-        await wait(500);
-        const mode = action.payload.bidPrice ? ["直播出价", "自定义出价", "出价"] : ["支付ROI", "支付 ROI"];
-        const modeResult = await clickByText("button, [role=tab], [role=button], label, a, div", mode, "choose_cost_control_mode");
-        steps.push(modeResult);
-        if (!modeResult.ok) return { ok: false, dryRun: action.dryRun, steps };
-        await wait(400);
-      }
-      if (action.payload.useLiveRoomImage) {
+      const boostType = String(action.payload.boostType || "");
+      const isLiveScreen = boostType === "liveScreenBoost" || boostType === "liveScreenCostControl";
+      if (isLiveScreen) {
         const live = await clickByText("button, [role=button], label, div", ["直播间画面", "直播画面"], "choose_live_room_image");
         steps.push(live);
         if (!live.ok) return { ok: false, dryRun: action.dryRun, steps };
-        await wait(400);
-      } else if (action.payload.materialIds?.length) {
-        const openPicker = await clickByText("button, [role=button], a", ["添加视频", "添加素材"], "open_material_picker");
-        steps.push(openPicker);
-        if (!openPicker.ok) return { ok: false, dryRun: action.dryRun, steps };
-        await wait(700);
-        for (const materialId of action.payload.materialIds) {
+        await wait(500);
+        const create = await clickExactByText(["追投", "新建追投"], "open_live_screen_boost_form");
+        steps.push(create);
+        if (!create.ok) return { ok: false, dryRun: action.dryRun, steps };
+        await wait(900);
+      } else {
+        const video = await clickByText("button, [role=tab], [role=button], label, a, div", ["视频"], "choose_video_material");
+        steps.push(video);
+        if (!video.ok) return { ok: false, dryRun: action.dryRun, steps };
+        await wait(500);
+        for (const materialId of action.payload.materialIds || []) {
           const row = candidateRowsForMaterial(materialId)[0];
           if (!row) return { ok: false, dryRun: action.dryRun, step: "find_material", error: "material_id_not_found", materialId, steps, url: location.href, title: document.title };
           row.scrollIntoView({ block: "center", inline: "center" });
           const checkbox = pickMaterialControl(row);
-          steps.push({ ok: true, step: "find_material", materialId, rowText: textOf(row).slice(0, 160) });
+          steps.push({ ok: true, step: "select_material", materialId, rowText: textOf(row).slice(0, 160) });
           checkbox.click();
+          await wait(350);
+        }
+        const create = await clickExactByText(["追投", "新建追投"], "open_material_boost_form");
+        steps.push(create);
+        if (!create.ok) return { ok: false, dryRun: action.dryRun, steps };
+        await wait(900);
+      }
+      if (/CostControl/i.test(boostType)) {
+        const costControl = await clickByText("button, [role=tab], [role=button], label, a, div", ["控成本追投", "控成本", "成本控制"], "choose_cost_control");
+        steps.push(costControl);
+        if (!costControl.ok) return { ok: false, dryRun: action.dryRun, steps };
+        await wait(500);
+        if (boostType !== "liveScreenCostControl") {
+          const mode = action.payload.bidPrice ? ["我的出价", "成交成本", "出价"] : ["综合ROI", "综合 ROI"];
+          const modeResult = await clickByText("button, [role=tab], [role=button], label, a, div", mode, "choose_cost_control_mode");
+          steps.push(modeResult);
+          if (!modeResult.ok) return { ok: false, dryRun: action.dryRun, steps };
           await wait(400);
         }
-        const picker = activeDialogFor(String(action.payload.materialIds[0] || ""));
-        const confirmPicker = await clickExactByText(["确定", "确认", "添加", "完成"], "confirm_material_picker", picker || document);
-        steps.push(confirmPicker);
-        if (!confirmPicker.ok) return { ok: false, dryRun: action.dryRun, steps };
-        await wait(700);
-        const createDialog = activeDialogFor("已添加") || activeDialogFor("调控预算") || activeDialogFor("追投素材");
-        const createText = exactText(createDialog || document.body);
-        const addedMatch = createText.match(/已添加\\s*[：:]\\s*(\\d+)\\s*\\/\\s*20/);
-        const addedCount = Number(addedMatch?.[1] || 0);
-        if (!Number.isFinite(addedCount) || addedCount < action.payload.materialIds.length) {
-          return { ok: false, dryRun: action.dryRun, step: "verify_materials_added", error: "materials_not_added_to_create_form", addedCount, expectedCount: action.payload.materialIds.length, steps, url: location.href, title: document.title };
-        }
-        steps.push({ ok: true, step: "verify_materials_added", addedCount });
       }
     } else {
       window.scrollTo({ top: document.body.scrollHeight * 0.45, behavior: "instant" });
@@ -669,14 +664,15 @@ function buildCreateTaskExpression(action, dryRun) {
       steps.push(create);
       if (!create.ok) return { ok: false, dryRun: action.dryRun, steps };
       await wait(1000);
-      const purchase = byText("button, [role=tab], [role=button], label, a, div", ["直播间购买"]);
-      if (purchase) {
-        purchase.scrollIntoView({ block: "center", inline: "center" });
-        purchase.click();
-        steps.push({ ok: true, step: "choose_live_room_purchase", text: textOf(purchase) });
+      const oneClickTarget = action.payload.boostType === "oneClickLiftPopularity" ? "直播间人气" : "直播间购买";
+      const target = byText("button, [role=tab], [role=button], label, a, div", [oneClickTarget]);
+      if (target) {
+        target.scrollIntoView({ block: "center", inline: "center" });
+        target.click();
+        steps.push({ ok: true, step: "choose_oneclick_target", text: textOf(target) });
         await wait(400);
       } else {
-        steps.push({ ok: true, step: "choose_live_room_purchase", warning: "live_room_purchase_not_found" });
+        steps.push({ ok: true, step: "choose_oneclick_target", warning: "oneclick_target_not_found", target: oneClickTarget });
       }
       if (action.payload.useLiveRoomImage) {
         const materialTab = await clickByText("button, [role=tab], [role=button], a, div", ["素材"], "click_material_source");
@@ -691,8 +687,7 @@ function buildCreateTaskExpression(action, dryRun) {
       fillInput(["预算", "金额"], action.payload.budget, "fill_budget"),
       fillInput(["时长", "小时", "持续"], action.payload.durationHours, "fill_duration"),
       fillInput(["ROI", "roi", "目标"], action.payload.targetRoi, "fill_roi"),
-      fillInput(["支付ROI", "支付 ROI"], action.payload.payRoi, "fill_pay_roi"),
-      fillInput(["直播出价", "自定义出价", "出价"], action.payload.bidPrice, "fill_bid_price"),
+      fillInput(["我的出价", "成交成本", "出价"], action.payload.bidPrice, "fill_bid_price"),
     ]) {
       steps.push(item);
       if (!item.ok) return { ok: false, dryRun: action.dryRun, steps };
@@ -787,10 +782,23 @@ async function executeCreateAction(action, options = {}) {
 
 async function previewTask(params = {}, options = {}) {
   const type = String(params.type || "");
-  const allowed = new Set(["materialBoost", "materialCostControlPayRoi", "materialCostControlBid", "oneClickLift", "liveScreenBoost"]);
+  const allowed = new Set([
+    "materialBoost",
+    "materialCostControlPayRoi",
+    "materialCostControlBid",
+    "oneClickLift",
+    "oneClickLiftPopularity",
+    "liveScreenBoost",
+    "liveScreenCostControl",
+  ]);
   if (!allowed.has(type)) return { ok: false, error: "invalid_preview_task_type" };
-  const oneclick = type === "oneClickLift";
+  const oneclick = type === "oneClickLift" || type === "oneClickLiftPopularity";
   const liveScreenBoost = type === "liveScreenBoost";
+  const liveScreenCostControl = type === "liveScreenCostControl";
+  const isLiveScreen = liveScreenBoost || liveScreenCostControl;
+  const costControl = type.startsWith("materialCostControl") || liveScreenCostControl;
+  const bidMode = type === "materialCostControlBid";
+  const requiresDuration = !costControl || liveScreenCostControl;
   const action = {
     id: `preview-${Date.now()}`,
     type: oneclick ? "create_oneclick_task" : "create_boost_task",
@@ -799,16 +807,18 @@ async function previewTask(params = {}, options = {}) {
       materialIds: normalizeMaterialIds(params.materialIds, params.materialId),
       budget: Number(params.budget),
       durationHours: Number(params.durationHours),
-      targetRoi: (oneclick || type === "materialBoost") ? undefined : Number(params.targetRoi) || undefined,
-      payRoi: type === "materialCostControlPayRoi" ? Number(params.payRoi) || Number(params.targetRoi) : undefined,
-      bidPrice: type === "materialCostControlBid" ? Number(params.bidPrice) : undefined,
-      boostType: type.startsWith("materialCostControl") ? "materialCostControl" : liveScreenBoost ? "liveScreenBoost" : "materialBoost",
-      useLiveRoomImage: oneclick || liveScreenBoost,
+      targetRoi: (oneclick || type === "materialBoost" || liveScreenBoost || liveScreenCostControl || bidMode) ? undefined : Number(params.targetRoi) || undefined,
+      payRoi: undefined,
+      bidPrice: bidMode ? Number(params.bidPrice) : undefined,
+      boostType: oneclick ? type : type.startsWith("materialCostControl") ? "materialCostControl" : liveScreenCostControl ? "liveScreenCostControl" : liveScreenBoost ? "liveScreenBoost" : "materialBoost",
+      useLiveRoomImage: oneclick || isLiveScreen,
     },
   };
   if (!Number.isFinite(action.payload.budget) || action.payload.budget <= 0) return { ok: false, error: "budget_required" };
-  if (!Number.isFinite(action.payload.durationHours) || action.payload.durationHours <= 0) return { ok: false, error: "duration_required" };
-  if (!oneclick && !liveScreenBoost && !action.payload.materialIds.length) return { ok: false, error: "material_id_required" };
+  if (requiresDuration && (!Number.isFinite(action.payload.durationHours) || action.payload.durationHours <= 0)) return { ok: false, error: "duration_required" };
+  if (costControl && !liveScreenCostControl && bidMode && (!Number.isFinite(action.payload.bidPrice) || action.payload.bidPrice <= 0)) return { ok: false, error: "bid_price_required" };
+  if (costControl && !liveScreenCostControl && !bidMode && (!Number.isFinite(action.payload.targetRoi) || action.payload.targetRoi <= 0)) return { ok: false, error: "target_roi_required" };
+  if (!oneclick && !isLiveScreen && !action.payload.materialIds.length) return { ok: false, error: "material_id_required" };
   const liveSourceScreenshot = action.payload.useLiveRoomImage ? await captureLiveBoardScreenshot(options, action.id) : "";
   const result = await executeCreateAction(action, { ...options, dryRun: true });
   return {
@@ -823,7 +833,7 @@ async function previewTask(params = {}, options = {}) {
       materialId: action.payload.materialId || "直播间画面",
       materialIds: action.payload.materialIds,
       budget: action.payload.budget,
-      durationHours: action.payload.durationHours,
+      durationHours: requiresDuration ? action.payload.durationHours : null,
       targetRoi: action.payload.targetRoi || action.payload.payRoi || null,
       payRoi: action.payload.payRoi || null,
       bidPrice: action.payload.bidPrice || null,
