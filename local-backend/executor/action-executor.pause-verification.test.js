@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { buildCreateTaskExpression, buildFollowupExpression, isVerifiedPauseResult } = require("./action-executor");
+const { buildCreateTaskExpression, buildFollowupExpression, buildPauseConfirmationExpression, isVerifiedPauseResult } = require("./action-executor");
 
 assert.strictEqual(
   isVerifiedPauseResult({}, {}),
@@ -40,5 +40,10 @@ const materialCreate = buildCreateTaskExpression({
 assert.match(materialCreate, /open_material_picker/, "素材追投预览必须先打开千川素材选择器");
 assert.match(materialCreate, /verify_materials_added/, "素材追投预览必须确认素材已带回创建表单");
 assert.doesNotThrow(() => new Function(`return ${materialCreate};`), "新建追投脚本必须可被浏览器解析");
+
+const pauseConfirmation = buildPauseConfirmationExpression({ type: "pause_task" });
+assert.match(pauseConfirmation, /confirmationStillOpen/, "暂停确认后必须检查弹窗是否仍然存在");
+assert.match(pauseConfirmation, /confirmRect/, "暂停确认必须返回按钮坐标，以便必要时执行原生鼠标点击");
+assert.doesNotThrow(() => new Function(`return ${pauseConfirmation};`), "暂停确认脚本必须可被浏览器解析");
 
 console.log("pause_verification=ok");

@@ -431,9 +431,26 @@ function buildPauseConfirmationExpression(action) {
           return /^(确定|确认|提交)$/.test(text) && !button.disabled && button.getAttribute("aria-disabled") !== "true";
         });
         if (!confirm) continue;
-        const confirmText = clean(confirm.innerText || confirm.textContent || confirm.getAttribute("aria-label") || "");
-        confirm.click();
-        return { ok: true, step: "pause_confirm_clicked", confirmText, dialogText: lastDialogText, url: location.href, title: document.title };
+        const clickTarget = confirm.closest("button, [role=button], a, input[type=button], input[type=submit], [tabindex], [class*='button'], [class*='btn']") || confirm;
+        const confirmText = clean(clickTarget.innerText || clickTarget.textContent || clickTarget.getAttribute("aria-label") || confirm.value || "");
+        const rect = clickTarget.getBoundingClientRect();
+        clickTarget.focus?.();
+        clickTarget.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+        clickTarget.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+        clickTarget.click();
+        await wait(350);
+        const confirmationStillOpen = isVisible(candidate.dialog)
+          && /确认|确定/.test(clean(candidate.dialog.innerText || candidate.dialog.textContent || ""));
+        return {
+          ok: true,
+          step: "pause_confirm_clicked",
+          confirmText,
+          dialogText: lastDialogText,
+          confirmationStillOpen,
+          confirmRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          url: location.href,
+          title: document.title,
+        };
       }
       if (dialogs.length) return { ok: false, step: "pause_confirmation", error: "pause_confirm_button_not_found", dialogText: lastDialogText, visibleButtons, url: location.href, title: document.title };
       await wait(500);
@@ -825,6 +842,20 @@ async function hoverRow(client, rowRect) {
   await wait(350);
 }
 
+async function clickAt(client, rect) {
+  const width = Number(rect?.width);
+  const height = Number(rect?.height);
+  const x = Number(rect?.x) + width / 2;
+  const y = Number(rect?.y) + height / 2;
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return false;
+  await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers: 0 });
+  await wait(80);
+  await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1, modifiers: 0 });
+  await wait(80);
+  await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1, modifiers: 0 });
+  return true;
+}
+
 async function capture(client, dataDir, actionId, phase) {
   ensureDir(path.join(dataDir, "execution"));
   const shot = await client.send("Page.captureScreenshot", { format: "png", fromSurface: true });
@@ -911,12 +942,30 @@ async function executeAction(action, options = {}) {
         });
         followValue = valueOrError(confirmation, "pause_confirmation_evaluation_failed");
         if (followValue.ok === true) {
+          if (followValue.confirmationStillOpen === true) {
+            const nativeClickApplied = await clickAt(client, followValue.confirmRect);
+            followValue = { ...followValue, nativeClickApplied };
+            await wait(900);
+          }
           const verification = await client.send("Runtime.evaluate", {
             expression: buildVerifyPausedExpression(action),
             returnByValue: true,
             awaitPromise: true,
           });
           verificationValue = valueOrError(verification, "pause_status_verification_evaluation_failed");
+          if (verificationValue.error === "task_still_active") {
+            await client.send("Page.reload", { ignoreCache: false });
+            await wait(1800);
+            const afterReload = await client.send("Runtime.evaluate", {
+              expression: buildVerifyPausedExpression(action),
+              returnByValue: true,
+              awaitPromise: true,
+            });
+            verificationValue = {
+              ...valueOrError(afterReload, "pause_status_verification_evaluation_failed"),
+              reloadedAfterPause: true,
+            };
+          }
         }
       } else {
         const follow = await client.send("Runtime.evaluate", {
@@ -979,4 +1028,4 @@ async function executeAction(action, options = {}) {
   return { ok: false, error: "action_target_not_found_or_not_clickable", attempts };
 }
 
-module.exports = { executeAction, previewTask, isVerifiedPauseResult, buildFollowupExpression, buildCreateTaskExpression };
+module.exports = { executeAction, previewTask, isVerifiedPauseResult, buildFollowupExpression, buildCreateTaskExpression, buildPauseConfirmationExpression };
