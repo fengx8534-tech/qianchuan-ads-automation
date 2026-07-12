@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { buildCreateTaskExpression, buildFollowupExpression, buildPauseConfirmationExpression, isVerifiedPauseResult } = require("./action-executor");
+const { buildActiveTaskFilterExpression, buildCreateTaskExpression, buildFollowupExpression, buildPauseConfirmationExpression, isVerifiedPauseResult } = require("./action-executor");
 
 assert.strictEqual(
   isVerifiedPauseResult({}, {}),
@@ -17,6 +17,12 @@ assert.strictEqual(
   isVerifiedPauseResult({ ok: true, step: "pause_confirm_clicked" }, { ok: true, status: "已暂停" }),
   true,
   "只有已点击确认且回读为已暂停时，才能标记成功",
+);
+
+assert.strictEqual(
+  isVerifiedPauseResult({ ok: true, step: "pause_confirm_clicked" }, { ok: true, step: "pause_status_inferred_from_active_filter", status: "已从调控中列表移除" }),
+  true,
+  "在调控中筛选下任务消失且筛选状态已确认时，应视为暂停成功",
 );
 
 const budgetFollowup = buildFollowupExpression({
@@ -45,5 +51,8 @@ const pauseConfirmation = buildPauseConfirmationExpression({ type: "pause_task" 
 assert.match(pauseConfirmation, /confirmationStillOpen/, "暂停确认后必须检查弹窗是否仍然存在");
 assert.match(pauseConfirmation, /confirmRect/, "暂停确认必须返回按钮坐标，以便必要时执行原生鼠标点击");
 assert.doesNotThrow(() => new Function(`return ${pauseConfirmation};`), "暂停确认脚本必须可被浏览器解析");
+
+const activeTaskFilter = buildActiveTaskFilterExpression();
+assert.doesNotThrow(() => new Function(`return ${activeTaskFilter};`), "调控中筛选检测脚本必须可被浏览器解析");
 
 console.log("pause_verification=ok");

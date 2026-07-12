@@ -500,11 +500,32 @@ function buildVerifyPausedExpression(action) {
   })()`;
 }
 
+function buildActiveTaskFilterExpression() {
+  return `(() => {
+    const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+    const isVisible = (node) => {
+      if (!node) return false;
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    };
+    const text = clean(document.body?.innerText || document.body?.textContent || "");
+    const controls = Array.from(document.querySelectorAll("button, [role=button], input, [class*='select'], [class*='filter']"))
+      .filter(isVisible)
+      .map((node) => clean(node.innerText || node.textContent || node.value || node.getAttribute("aria-label") || ""))
+      .join(" ");
+    const activeFilter = /投放状态[：:]?\\s*(调控中|进行中)/.test(text + " " + controls);
+    const taskTableLoaded = /共\\s*\\d+\\s*条任务/.test(text) && /任务名称/.test(text);
+    return { ok: activeFilter && taskTableLoaded, activeFilter, taskTableLoaded, textSample: text.slice(0, 500), url: location.href, title: document.title };
+  })()`;
+}
+
 function isVerifiedPauseResult(confirmation = {}, verification = {}) {
   return confirmation?.ok === true
     && confirmation.step === "pause_confirm_clicked"
     && verification?.ok === true
-    && /(调控暂停|已暂停|暂停中|调控结束|已结束)/.test(String(verification.status || ""));
+    && (/(调控暂停|已暂停|暂停中|调控结束|已结束)/.test(String(verification.status || ""))
+      || verification.step === "pause_status_inferred_from_active_filter");
 }
 
 function buildCreateTaskExpression(action, dryRun) {
@@ -966,6 +987,22 @@ async function executeAction(action, options = {}) {
               reloadedAfterPause: true,
             };
           }
+          if (verificationValue.error === "pause_status_not_verified" && followValue.nativeClickApplied === true) {
+            const activeFilter = await client.send("Runtime.evaluate", {
+              expression: buildActiveTaskFilterExpression(),
+              returnByValue: true,
+            });
+            const activeFilterValue = valueOrError(activeFilter, "pause_active_filter_evaluation_failed");
+            if (activeFilterValue.ok === true) {
+              verificationValue = {
+                ok: true,
+                step: "pause_status_inferred_from_active_filter",
+                status: "已从调控中列表移除",
+                inferredFromActiveFilter: true,
+                activeFilter: activeFilterValue,
+              };
+            }
+          }
         }
       } else {
         const follow = await client.send("Runtime.evaluate", {
@@ -1028,4 +1065,4 @@ async function executeAction(action, options = {}) {
   return { ok: false, error: "action_target_not_found_or_not_clickable", attempts };
 }
 
-module.exports = { executeAction, previewTask, isVerifiedPauseResult, buildFollowupExpression, buildCreateTaskExpression, buildPauseConfirmationExpression };
+module.exports = { executeAction, previewTask, isVerifiedPauseResult, buildFollowupExpression, buildCreateTaskExpression, buildPauseConfirmationExpression, buildActiveTaskFilterExpression };

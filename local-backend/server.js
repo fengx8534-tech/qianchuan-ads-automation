@@ -4299,12 +4299,16 @@ function notifyActionExecutionResult(state, action = {}, execution = {}) {
   const dryRun = result.dryRun === true;
   const ok = execution.ok === true || result.ok === true;
   const task = action.payload?.taskName || action.payload?.taskId || "--";
+  const error = String(execution.error || result.error || "");
+  const resultLabel = dryRun
+    ? (ok ? "dryRun 验证成功" : "dryRun 验证失败")
+    : (ok ? "执行成功" : (/pause_status_not_verified|pause_status_verification/.test(error) ? "执行状态未确认" : "执行失败"));
   const content = [
     "[千川执行结果]",
     `动作：${actionNotificationLabel(action.type)}`,
     `对象：${task}`,
-    `结果：${dryRun ? (ok ? "dryRun 验证成功" : "dryRun 验证失败") : (ok ? "执行成功" : "执行失败")}`,
-    `详情：${dingTalkReasonText(execution.error || result.error || action.reason || "--")}`,
+    `结果：${resultLabel}`,
+    `详情：${dingTalkReasonText(error || action.reason || "--")}`,
   ].join("\n");
   safeDingTalkText(state, "notifyActionResult", `action:${action.id || Date.now()}`, content);
 }
