@@ -14,6 +14,7 @@ const LOG_FILE = path.join(DATA_DIR, "learning-log.jsonl");
 const AI_LOG_FILE = path.join(DATA_DIR, "ai-log.jsonl");
 const AI_MEMORY_FILE = path.join(DATA_DIR, "ai-memory.json");
 const VISUAL_LOG_FILE = path.join(DATA_DIR, "visual-log.jsonl");
+const DASHBOARD_SESSION_FILE = path.join(DATA_DIR, "dashboard-session.json");
 const RULES_FILE = path.join(__dirname, "INVESTMENT_RULES.md");
 const { shouldCallAI } = require("./lib/trigger");
 const { buildSystemPrompt, buildUserPayload, buildChatPrompt } = require("./lib/ai-prompt");
@@ -4435,7 +4436,21 @@ let dingtalkHourlySummaryHour = "";
 
 function canSendDingTalk(state = {}, option = "") {
   const config = state.config?.dingtalk || {};
-  return config.enabled === true && config[option] === true;
+  const session = readJson(DASHBOARD_SESSION_FILE, { open: false });
+  return session.open === true && config.enabled === true && config[option] === true;
+}
+
+function updateDashboardSession(body = {}) {
+  const open = body.open === true;
+  const sessionId = String(body.sessionId || "").trim();
+  if (!sessionId || sessionId.length > 128) return { ok: false, error: "dashboard_session_id_required" };
+  const current = readJson(DASHBOARD_SESSION_FILE, { open: false });
+  // A delayed pagehide event from a replaced page must not close a newer panel session.
+  if (!open && current.open === true && current.sessionId && current.sessionId !== sessionId) {
+    return { ok: true, ignored: true, dashboardSession: { open: true } };
+  }
+  writeJson(DASHBOARD_SESSION_FILE, { open, sessionId, updatedAt: Date.now() });
+  return { ok: true, dashboardSession: { open } };
 }
 
 function safeDingTalkMarkdown(state, option, key, title, text, cooldownMs = 0) {
@@ -5631,6 +5646,11 @@ async function route(req, res) {
     return sendFile(res, filePath);
   }
 
+  if (url.pathname === "/api/dashboard/session" && req.method === "POST") {
+    const result = updateDashboardSession(await readBody(req));
+    return send(res, result.ok ? 200 : 400, result);
+  }
+
   if (url.pathname === "/api/snapshot.php" && req.method === "POST") {
     const body = await readBody(req);
     if (!body.pageType || body.fields === undefined) return send(res, 400, { ok: false, error: "missing pageType or fields" });
@@ -5662,6 +5682,9 @@ async function route(req, res) {
   }
 
   if (url.pathname === "/api/dingtalk/test" && req.method === "POST") {
+    const state = readJson(STATE_FILE, {});
+    state.config = migrateConfig(state.config);
+    if (!canSendDingTalk(state, "notifySystemAlert")) return send(res, 409, { ok: false, error: "dashboard_closed_notifications_disabled" });
     const result = await dingtalk.sendText("千川机器人已连接 ✓");
     return send(res, result.ok ? 200 : 400, result);
   }
@@ -5940,6 +5963,7 @@ async function route(req, res) {
 }
 
 ensureDataFiles();
+writeJson(DASHBOARD_SESSION_FILE, { open: false, sessionId: "", updatedAt: Date.now() });
 {
   const state = readJson(STATE_FILE, {});
   cleanupExpiredActions(state, Date.now(), 50);

@@ -2444,6 +2444,27 @@ $("aiApproveAll").addEventListener("click", approveAiBatch);
 $("aiRejectAll").addEventListener("click", rejectAiBatch);
 $("aiReviewEach").addEventListener("click", () => { if (currentAiBatch) renderAiDialog(currentAiBatch, true); });
 $("aiDialogActions").addEventListener("click", (event) => { const button = event.target.closest("button[data-dialog-review]"); if (button) reviewDialogAction(button.dataset.actionId, button.dataset.dialogReview); });
+
+const dashboardSessionId = globalThis.crypto?.randomUUID?.() || `dashboard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function updateDashboardSession(open) {
+  const payload = JSON.stringify({ open, sessionId: dashboardSessionId });
+  if (!open && navigator.sendBeacon) {
+    navigator.sendBeacon("/api/dashboard/session", new Blob([payload], { type: "application/json" }));
+    return;
+  }
+  fetch("/api/dashboard/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: payload,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+// Push messages are allowed only while this local panel session is open.
+updateDashboardSession(true);
+window.addEventListener("pagehide", () => updateDashboardSession(false));
+window.addEventListener("pageshow", () => updateDashboardSession(true));
+
 applyMode(controlMode);
 applyView(currentView);
 refreshSecretStatus().catch(() => {});
