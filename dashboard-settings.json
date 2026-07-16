@@ -10,7 +10,7 @@
     "aiModel": "deepseek-v4-flash",
     "autoCollectEnabled": true,
     "autoReviewAfterOffAir": true,
-    "baselineTargetRoi": 6,
+    "baselineTargetRoi": 6.2,
     "closeTime": "02:00",
     "dingtalk": {
       "enabled": true,
@@ -151,7 +151,7 @@
         "18:00",
         "22:00"
       ],
-      "targetRoi": 6
+      "targetRoi": 6.2
     },
     "lowFiveMinSpend": 20,
     "materialCollectIntervalMs": 1800000,
@@ -162,7 +162,7 @@
     "offAirConfirmationsRequired": 2,
     "offAirLookbackMs": 720000,
     "openTime": "06:00",
-    "targetRoi": 6,
+    "targetRoi": 6.2,
     "visualCollectStaleMs": 900000
   },
   "managedBy": "qianchuan-dashboard",
