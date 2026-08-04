@@ -151,7 +151,7 @@
         "18:00",
         "22:00"
       ],
-      "targetRoi": 6.2
+      "targetRoi": 6
     },
     "lowFiveMinSpend": 20,
     "materialCollectIntervalMs": 1800000,
